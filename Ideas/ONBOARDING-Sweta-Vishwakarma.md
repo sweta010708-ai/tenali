@@ -1,11 +1,3 @@
-# Onboarding Document — Sweta Vishwakarma
-
-**Project:** Tenali — Adaptive Mathematics & Logic Learning Platform  
-**Author:** Sweta Vishwakarma  
-**Date:** October 2026  
-
----
-
 ## 1. What is Tenali?
 
 Tenali is an open-source, interactive, and adaptive learning platform designed to make mathematics practice engaging and effective for young learners. Named after the legendary Indian court wit Tenali Raman, celebrated for his sharp logic and intellect, the platform fosters mathematical reasoning and problem-solving intuition rather than rote memorization.
