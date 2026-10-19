@@ -62,20 +62,21 @@ During my exploration and work on the codebase, I identified several concrete is
 - **What:** When timeout handling was added for speed-run and perfect-solve goals, several apps referenced undefined state variables (`phase` and `setPhase('finished')`). However, these components manage their completion using `finished` and `setFinished(true)`. Furthermore, orphaned timeout functions existed in components like `RiyaApp` that lacked timer hooks.
 - **Why it matters:** In "Perfect Solve" or "Speed Run" modes, letting the countdown timer expire failed to transition the quiz to the finished summary screen properly or threw runtime exceptions, preventing learners from viewing their performance breakdown.
 
-### Gap 2: Missing Prop Destructuring in `QuizLayout` Causing CI ESLint Failures
-- **Where:** `client/src/components/QuizLayout.jsx` (line 8 and line 75).
-- **What:** During a mechanical cleanup, the `subtitle` prop was removed from the function parameter list (`export function QuizLayout({ title, onBack, children, ... })`), but line 75 still rendered `{subtitle && <p className="quiz-subtitle">{subtitle}</p>}`.
-- **Why it matters:** Because ESLint enforces `no-undef: 'error'`, this caused blocking CI failures (`Exit code 2`) on pull requests across the repository, stalling continuous integration checks.
+### Gap 2: Missing Prop Destructuring in `QuizLayout` Causing CI ESLint Failures (Fixed on `main`)
+- **Where:** `client/src/components/QuizLayout.jsx` (lines 8 and 75).
+- **Status:** Already fixed on `main` (commit `ca33019f`). Noted here as it was an active blocker I encountered during initial codebase exploration.
+- **What:** During an earlier cleanup, the `subtitle` prop was accidentally omitted from the destructured parameter list (`export function QuizLayout({ title, onBack, children, ... })`), while line 75 still rendered `{subtitle && <p className="quiz-subtitle">{subtitle}</p>}`.
+- **Why it matters:** Because ESLint enforces `no-undef: 'error'`, this previously broke CI lint checks (`Exit code 2`) across repository pull requests before being resolved on `main`.
 
 ### Gap 3: Monolithic Structure of `client/src/App.jsx`
 - **Where:** `client/src/App.jsx` (~71,000 lines of code).
 - **What:** Tens of distinct quiz apps, concepts, and utilities are housed in a single massive file. Many quiz applications duplicate timer initialization, result recording, and submission logic rather than leveraging reusable hooks.
 - **Why it matters:** Code reviews become difficult, merge conflicts are frequent when multiple contributors work on different puzzles, and editor performance suffers.
 
-### Gap 4: Balance Scale Weight Bank State Reset Edge Cases
-- **Where:** Balance Scale lab implementation.
-- **What:** Interactive weight bank elements on the balance pans required more intuitive handling during dynamic re-balancing and state resets between practice rounds.
-- **Why it matters:** When students experiment with different weights to balance algebraic equations, inconsistent weight bank resets can cause confusion and break interactive learning flow.
+### Gap 4: Asynchronous State Desynchronization in Balance Scale Weight Bank
+- **Where:** `client/src/App.jsx` in `BalanceScaleApp` (lines 42173 and 42209–42246).
+- **What:** In `fetchQuestion(selectedLevel)`, new question data is fetched and set via `setQuestion(data)` (line 42222). Immediately after, lines 42227 and 42240 construct the available weight bank using `targetTotal` (via `createDynamicWeightBank(targetTotal)`). However, `targetTotal` is declared at component scope as a value derived from React state (`const targetTotal = question ? (Number(question.a) + Number(question.b)) : 0` at line 42173). Because `setQuestion` updates state asynchronously, `targetTotal` does not update within the current execution turn; on the initial question, it evaluates to `0` (since `question` starts as `null`), and on subsequent questions, it evaluates to the *previous* round's total.
+- **Why it matters:** On the first question of a session, `createDynamicWeightBank(0)` runs with target 0. Because target is less than 15, it falls back to only generating small denominations (`[5, 1]`) even on medium or hard mode where target sums reach up to 200. This leaves the learner without larger weights (10s, 50s, 100s) needed to balance the scale. On later questions, the bank is calibrated to the previous problem's total instead of the current problem. To fix this, the bank generation should calculate `const currentTarget = Number(data.a) + Number(data.b)` directly from the fetched `data` payload before generating the bank (similar to how `AdditionApp` handles it at line 50815).
 
 ---
 
@@ -106,9 +107,9 @@ As part of my onboarding, I made verified contributions addressing real defects 
    - Corrected `handleTimeout` across 8 quiz applications in [`client/src/App.jsx`](client/src/App.jsx): `SqrtApp`, `PolyMulApp`, `PolyFactorApp`, `PrimeFactorApp`, `QFormulaApp`, `SimulApp`, `FuncEvalApp`, and `LineEqApp`.
    - Replaced errant references to undefined `phase` / `setPhase` with proper `finished` and `setFinished(true)` state handling.
    - Cleaned up orphaned, dead timeout declarations in `RiyaApp`.
-   - Enhanced the Balance Scale interactive weight bank experience.
+   - Identified and documented the asynchronous state timing bug in `BalanceScaleApp` weight bank generation.
 
 2. **Resolved Blocking CI Lint Errors:**
-   - Diagnosed and fixed the blocking `no-undef` ESLint error in [`client/src/components/QuizLayout.jsx`](client/src/components/QuizLayout.jsx) by restoring the missing `subtitle` prop.
+   - Diagnosed and verified the blocking `no-undef` ESLint error in [`client/src/components/QuizLayout.jsx`](client/src/components/QuizLayout.jsx) (restoring the missing `subtitle` prop, resolved on `main`).
    - Addressed the mount-only navigation `react-hooks/exhaustive-deps` warning in [`client/src/vachana/index.jsx`](client/src/vachana/index.jsx).
    - Confirmed client builds cleanly (`npm run build` completed in ~8s) and reduced ESLint errors from 2 to 0.
