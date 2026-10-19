@@ -8,7 +8,7 @@ Furthermore, Tenali keeps students engaged by integrating gamification mechanics
 
 ---
 
-## 2. What do you understand by Tenali (as a system)?
+## 2. What do I understand by Tenali (as a system)?
 
 At an architectural level, Tenali operates as an algorithmic question-generation and validation engine paired with a rich, interactive Single Page Application (SPA) frontend.
 
@@ -98,7 +98,7 @@ During my exploration and work on the codebase, I identified several concrete is
 
 ---
 
-## 6. Your Contribution
+## 6. My Contribution
 
 As part of my onboarding, I made verified contributions addressing real defects in the platform's quiz infrastructure:
 
