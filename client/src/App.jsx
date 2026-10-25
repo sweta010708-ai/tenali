@@ -61975,6 +61975,8 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
   const [results, setResults] = useState([])
   // Timer instance for tracking time per round
   const timer = useTimer()
+  const roundRef = useRef(0)
+  const commonSymbolRef = useRef('')
 
   /**
    * scatterPositions(n): Generate random scattered positions for n symbols in circular area
@@ -62037,21 +62039,21 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
    * Resets feedback/reveal and starts timer for the round
    */
   
-  const handleTimeout = async () => {
+  const handleTimeout = (targetRound = roundRef.current, targetSymbol = commonSymbolRef.current) => {
     if (revealed || finished) return
     setIsCorrect(false)
     setRevealed(true)
-    setFeedback("⏰ Time's up!")
+    setFeedback(`⏰ Time's up! The match was ${targetSymbol}.`)
     const timeTaken = timer.stop ? timer.stop() : 0
-    const qPrompt = `Round ${round}`
-    setResults(prev => [...prev, { prompt: qPrompt, question: qPrompt, userAnswer: '(timeout)', correctAnswer: commonSymbol, correct: false, time: timeTaken }])
+    const qPrompt = `Round ${targetRound}`
+    setResults(prev => [...prev, { prompt: qPrompt, question: qPrompt, userAnswer: '(timeout)', correctAnswer: targetSymbol, correct: false, time: timeTaken }])
     if (sessionGoal === 'perfect') {
       setFinished(true)
       timer.reset()
     }
   }
 
-  const generateRound = (n) => {
+  const generateRound = (n, currentRoundNum = roundRef.current) => {
     // Shuffle symbol pool and select 2n-1 unique symbols
     const pool = [...TWIN_SYMBOLS].sort(() => Math.random() - 0.5)
     const common = pool[0]  // Symbol that will appear in both panels
@@ -62076,11 +62078,21 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
     setLeftPositions(scatterPositions(left.length))
     setRightPositions(scatterPositions(right.length))
     setCommonSymbol(common)
+    commonSymbolRef.current = common
+    roundRef.current = currentRoundNum
     setFeedback('')
     setIsCorrect(null)
     setRevealed(false)
+
+    // Capture round and symbol as local values for this round's timeout callback
+    const roundForTimeout = currentRoundNum
+    const symbolForTimeout = common
+    const onTimeout = () => {
+      handleTimeout(roundForTimeout, symbolForTimeout)
+    }
+
     // TwinHuntApp has no difficulty/isAdaptive state, so use the 'easy', non-adaptive limit.
-    timer.start(sessionGoal, handleTimeout, getSpeedRunLimit('easy', false))
+    timer.start(sessionGoal, onTimeout, getSpeedRunLimit('easy', false))
   }
 
   /**
@@ -62102,8 +62114,9 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
     setFinished(false)
     setScore(0)
     setRound(1)
+    roundRef.current = 1
     setResults([])
-    generateRound(n)
+    generateRound(n, 1)
   }
 
   /**
@@ -62118,16 +62131,18 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
   const handlePick = (symbol) => {
     if (revealed) return  // Ignore picks after round already answered
     const timeTaken = timer.stop()
-    const correct = symbol === commonSymbol
+    const activeSymbol = commonSymbolRef.current || commonSymbol
+    const activeRound = roundRef.current || round
+    const correct = symbol === activeSymbol
     if (correct) setScore((s) => s + 1)
     setIsCorrect(correct)
     setFeedback(correct
-      ? `Correct! ${commonSymbol} was the match.`
-      : `Wrong — you picked ${symbol}. The match was ${commonSymbol}.`)
+      ? `Correct! ${activeSymbol} was the match.`
+      : `Wrong — you picked ${symbol}. The match was ${activeSymbol}.`)
     setResults((prev) => [...prev, {
-      question: `Round ${round}`,
+      question: `Round ${activeRound}`,
       userAnswer: symbol,
-      correctAnswer: commonSymbol,
+      correctAnswer: activeSymbol,
       correct,
       time: timeTaken,
     }])
@@ -62148,8 +62163,10 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
       timer.reset()
       return
     }
-    setRound((r) => r + 1)
-    generateRound(Number(count))
+    const nextRound = round + 1
+    setRound(nextRound)
+    roundRef.current = nextRound
+    generateRound(Number(count), nextRound)
   }
   useAutoAdvance(revealed, advanceRef, isCorrect)
 
