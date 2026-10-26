@@ -57,16 +57,23 @@ Tenali has grown into an extensive full-stack platform covering arithmetic, alge
 
 During my exploration and work on the codebase, I identified several concrete issues impacting maintainability, stability, and developer workflows:
 
-### Gap 1: Inconsistent and Broken `handleTimeout` Implementations in Quiz Apps
-- **Where:** `client/src/App.jsx` across multiple bespoke quiz components, including `SqrtApp`, `PolyMulApp`, `PolyFactorApp`, `PrimeFactorApp`, `QFormulaApp`, `SimulApp`, `FuncEvalApp`, and `LineEqApp`.
-- **What:** When timeout handling was added for speed-run and perfect-solve goals, several apps referenced undefined state variables (`phase` and `setPhase('finished')`). However, these components manage their completion using `finished` and `setFinished(true)`. Furthermore, orphaned timeout functions existed in components like `RiyaApp` that lacked timer hooks.
-- **Why it matters:** In "Perfect Solve" or "Speed Run" modes, letting the countdown timer expire failed to transition the quiz to the finished summary screen properly or threw runtime exceptions, preventing learners from viewing their performance breakdown.
+> **Verification Baseline:** Verified against `main` at base commit `379abeb1fe880314cd2b44f03e197a43a8041a38`.  
+> **Verification Commands:**  
+> - Client unit tests: `cd client && npm test` (`vitest run`)  
+> - Client production build: `cd client && npm run build` (`vite build`)  
+> - Server tests: `node server/lib/bkt.test.js`  
+> - ESLint verification & suppression pruning: `cd client && npx eslint . --prune-suppressions`
+
+### Gap 1: Inconsistent `handleTimeout` Implementations in Quiz Apps Relying on Typeof Guards
+- **Where:** `client/src/App.jsx` across bespoke quiz components, including `SqrtApp`, `PolyMulApp`, `PolyFactorApp`, `PrimeFactorApp`, `QFormulaApp`, `SimulApp`, `FuncEvalApp`, and `LineEqApp`.
+- **What:** The timeout path in these quiz applications relies on defensive `typeof` guards (`try { if (typeof setFinished === 'function') setFinished(true); if (typeof setPhase === 'function') setPhase('finished'); timer.reset() } catch(_) {}`) instead of binding directly to real component state. These components actually track completion using `finished` and `setFinished(true)` rather than `phase`. Furthermore, orphaned timeout functions existed in components like `RiyaApp` that lacked timer hooks. Open PR [#357](https://github.com/vicharanashala/tenali/pull/357) replaces these typeof guards with explicit, genuine state transitions.
+- **Why it matters:** Relying on silent `typeof` checks obscures control flow and masks state lifecycle issues across different goal modes (`speed`, `perfect`). Binding completion transitions directly to genuine state ensures consistent session conclusion and predictable results recording.
 
 ### Gap 2: Missing Prop Destructuring in `QuizLayout` Causing CI ESLint Failures (Fixed on `main`)
 - **Where:** `client/src/components/QuizLayout.jsx` (lines 8 and 75).
-- **Status:** Already fixed on `main` (commit `ca33019f`). Noted here as it was an active blocker I encountered during initial codebase exploration.
+- **Status:** Already fixed on `main` (merged commit `ca33019f`). Noted here as it was an active blocker encountered during initial codebase exploration.
 - **What:** During an earlier cleanup, the `subtitle` prop was accidentally omitted from the destructured parameter list (`export function QuizLayout({ title, onBack, children, ... })`), while line 75 still rendered `{subtitle && <p className="quiz-subtitle">{subtitle}</p>}`.
-- **Why it matters:** Because ESLint enforces `no-undef: 'error'`, this previously broke CI lint checks (`Exit code 2`) across repository pull requests before being resolved on `main`.
+- **Why it matters:** Because ESLint enforces `no-undef: 'error'`, this previously broke CI lint checks (`Exit code 2`) across repository pull requests before being resolved on `main` in commit `ca33019f`.
 
 ### Gap 3: Monolithic Structure of `client/src/App.jsx`
 - **Where:** `client/src/App.jsx` (~71,000 lines of code).
@@ -74,8 +81,8 @@ During my exploration and work on the codebase, I identified several concrete is
 - **Why it matters:** Code reviews become difficult, merge conflicts are frequent when multiple contributors work on different puzzles, and editor performance suffers.
 
 ### Gap 4: Asynchronous State Desynchronization in Balance Scale Weight Bank
-- **Where:** `client/src/App.jsx` in `BalanceScaleApp` (lines 42173 and 42209–42246).
-- **What:** In `fetchQuestion(selectedLevel)`, new question data is fetched and set via `setQuestion(data)` (line 42222). Immediately after, lines 42227 and 42240 construct the available weight bank using `targetTotal` (via `createDynamicWeightBank(targetTotal)`). However, `targetTotal` is declared at component scope as a value derived from React state (`const targetTotal = question ? (Number(question.a) + Number(question.b)) : 0` at line 42173). Because `setQuestion` updates state asynchronously, `targetTotal` does not update within the current execution turn; on the initial question, it evaluates to `0` (since `question` starts as `null`), and on subsequent questions, it evaluates to the *previous* round's total.
+- **Where:** `client/src/App.jsx` in `BalanceScaleApp` (lines 41910–42010, specifically lines 41928, 41974, 41995, and 42008 on `main`).
+- **What:** In `fetchQuestion(selectedLevel)`, new question data is fetched and set via `setQuestion(data)` (line 41974). Immediately after, lines 41995 and 42008 construct the available weight bank using `targetTotal` (via `createDynamicWeightBank(targetTotal)`). However, `targetTotal` is declared at component scope as a value derived from React state (`const targetTotal = question ? (Number(question.a) + Number(question.b)) : 0` at line 41928). Because `setQuestion` updates state asynchronously, `targetTotal` does not update within the current execution turn; on the initial question, it evaluates to `0` (since `question` starts as `null`), and on subsequent questions, it evaluates to the *previous* round's total.
 - **Why it matters:** On the first question of a session, `createDynamicWeightBank(0)` runs with target 0. Because target is less than 15, it falls back to only generating small denominations (`[5, 1]`) even on medium or hard mode where target sums reach up to 200. This leaves the learner without larger weights (10s, 50s, 100s) needed to balance the scale. On later questions, the bank is calibrated to the previous problem's total instead of the current problem. To fix this, the bank generation should calculate `const currentTarget = Number(data.a) + Number(data.b)` directly from the fetched `data` payload before generating the bank (similar to how `AdditionApp` handles it at line 50815).
 
 ---
@@ -101,15 +108,16 @@ During my exploration and work on the codebase, I identified several concrete is
 
 ## 6. My Contribution
 
-As part of my onboarding, I made verified contributions addressing real defects in the platform's quiz infrastructure:
+As part of my onboarding, I investigated codebase defects, identified reproducible gaps against `main`, and contributed targeted fixes:
 
-1. **Fixed Quiz Timers and Timeout Logic (PR #357):**
-   - Corrected `handleTimeout` across 8 quiz applications in [`client/src/App.jsx`](client/src/App.jsx): `SqrtApp`, `PolyMulApp`, `PolyFactorApp`, `PrimeFactorApp`, `QFormulaApp`, `SimulApp`, `FuncEvalApp`, and `LineEqApp`.
-   - Replaced errant references to undefined `phase` / `setPhase` with proper `finished` and `setFinished(true)` state handling.
-   - Cleaned up orphaned, dead timeout declarations in `RiyaApp`.
-   - Identified and documented the asynchronous state timing bug in `BalanceScaleApp` weight bank generation.
+1. **Quiz Timers, Timeout Logic, and Balance Scale (Open PR [#357](https://github.com/vicharanashala/tenali/pull/357) — In Review):**
+   - Corrects `handleTimeout` across 8 quiz applications in [`client/src/App.jsx`](../client/src/App.jsx): `SqrtApp`, `PolyMulApp`, `PolyFactorApp`, `PrimeFactorApp`, `QFormulaApp`, `SimulApp`, `FuncEvalApp`, and `LineEqApp`, replacing fragile `typeof` guards with genuine `finished` / `setFinished(true)` state handling.
+   - Cleans up orphaned, dead timeout declarations in `RiyaApp`.
+   - Diagnosed and fixed the Balance Scale weight bank timing bug (hoisting `createDynamicWeightBank` to module scope for reusability).
+   - Fixed Twin Hunt timeout round/symbol staleness with synchronous local captures and refs.
+   - Pruned obsolete ESLint suppression entries in `client/eslint-suppressions.json`.
+   - Added unit test suite `client/src/quizFixes.test.jsx` covering Twin Hunt timeout accuracy with fake timers, Balance Scale weight bank denominations, and Gym/Random Mix completion.
 
-2. **Resolved Blocking CI Lint Errors:**
-   - Diagnosed and verified the blocking `no-undef` ESLint error in [`client/src/components/QuizLayout.jsx`](client/src/components/QuizLayout.jsx) (restoring the missing `subtitle` prop, resolved on `main`).
-   - Addressed the mount-only navigation `react-hooks/exhaustive-deps` warning in [`client/src/vachana/index.jsx`](client/src/vachana/index.jsx).
-   - Confirmed client builds cleanly (`npm run build` completed in ~8s) and reduced ESLint errors from 2 to 0.
+2. **CI Lint Verification & Baselining:**
+   - Diagnosed and verified the blocking `no-undef` ESLint error in [`client/src/components/QuizLayout.jsx`](../client/src/components/QuizLayout.jsx) (missing `subtitle` prop, merged into `main` in commit `ca33019f`).
+   - Verified that client builds cleanly (`npm run build` completed with 0 errors) and validated lint status via `npx eslint . --prune-suppressions`.
