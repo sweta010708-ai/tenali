@@ -62039,7 +62039,7 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
    * Resets feedback/reveal and starts timer for the round
    */
   
-  const handleTimeout = (targetRound = roundRef.current, targetSymbol = commonSymbolRef.current) => {
+  const handleTimeout = (targetRound, targetSymbol) => {
     if (revealed || finished) return
     setIsCorrect(false)
     setRevealed(true)
@@ -62053,7 +62053,7 @@ function TwinHuntApp({ onBack, isGoalMode = false }) {
     }
   }
 
-  const generateRound = (n, currentRoundNum = roundRef.current) => {
+  const generateRound = (n, currentRoundNum) => {
     // Shuffle symbol pool and select 2n-1 unique symbols
     const pool = [...TWIN_SYMBOLS].sort(() => Math.random() - 0.5)
     const common = pool[0]  // Symbol that will appear in both panels

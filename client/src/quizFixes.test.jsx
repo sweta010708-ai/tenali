@@ -82,7 +82,7 @@ describe('Twin Hunt - Timeout Synchronous Round and Symbol Tracking', () => {
     const roundRef = { current: 1 };
     const commonSymbolRef = { current: '🍎' };
 
-    const handleTimeout = (targetRound = roundRef.current, targetSymbol = commonSymbolRef.current) => {
+    const handleTimeout = (targetRound, targetSymbol) => {
       if (revealed) return;
       isCorrect = false;
       revealed = true;
